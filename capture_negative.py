@@ -201,7 +201,7 @@ with NeewerLight() as light:
     bayer_data *= wpoint/(WhiteLevel - avg_blacklevel)
 
     if(np.amax(bayer_data) > 65504):
-        scalefac = 65504/np.amax(dng_data)
+        scalefac = 65504/np.amax(bayer_data)
         bayer_data *= scalefac
         wpoint *= scalefac
 
