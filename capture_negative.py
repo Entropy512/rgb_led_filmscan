@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 
+'''
+Tri-color capture tool inspired by https://discuss.pixls.us/t/digitizing-film-using-dslr-and-rgb-led-lights/18825
+'''
 import argparse
 from time import sleep
 import rawpy
@@ -8,6 +11,8 @@ import numpy as np
 from fractions import Fraction
 import logging
 from neewer_light import NeewerLight
+import tifffile as TIFF
+import pyexiv2
 
 def empty_event_queue(camera):
     while True:
@@ -18,11 +23,17 @@ def empty_event_queue(camera):
             # get a second image if camera is set to raw + jpeg
             print('Unexpected new file', data.folder + data.name)
 
-
+#fugly, find a better solution for generating RATIONAL/SRATIONAL
+def cm_to_flatrational(input_array):
+    retarray = np.ones(input_array.size*2, dtype=np.int32)
+    retarray[0::2] = (input_array.flatten()*10000).astype(np.int32)
+    retarray[1::2] = 10000
+    return retarray
 
 logging.basicConfig(
     format='%(levelname)s: %(name)s: %(message)s', level=logging.ERROR)
 callback_obj = gp.check_result(gp.use_python_logging())
+
 
 ap = argparse.ArgumentParser()
 ap.add_argument('-o', '--output', required=True,
@@ -137,8 +148,16 @@ with NeewerLight() as light:
 
     rawfile = rawpy.imread('blue.ARW')
 
-    bayer_pattern = rawfile.raw_pattern
+    bayer_pattern = rawfile.raw_pattern.astype(np.uint8)
     bayer_data = rawfile.raw_image.astype('float64')
+
+    #This is the last image, pull all of the other metadata we need for our DNG
+    WB_AsShot = rawfile.camera_whitebalance
+    WhiteLevel = rawfile.white_level
+    WhiteLevel_perChannel = np.array(rawfile.camera_white_level_per_channel, dtype=np.uint16)
+    BlackLevel_perChannel = np.array(rawfile.black_level_per_channel, dtype=np.uint16)
+    blacklevel_array = np.array(BlackLevel_perChannel)[bayer_pattern]
+    CM_XYZ2camRGB = rawfile.rgb_xyz_matrix
 
     iBrow,  iBclmn  = np.argwhere(bayer_pattern == 2)[0]
 
@@ -146,3 +165,78 @@ with NeewerLight() as light:
 
     print("Blue max:" + str(np.amax(B)))
     print("Blue min:" + str(np.amin(B)))
+
+    #Create our merged DNG from our three captures
+    bayer_data[ iBrow::2,  iBclmn::2] = B
+    bayer_data[iG0row::2, iG0clmn::2] = G
+    bayer_data[iG1row::2, iG1clmn::2] = G1
+    bayer_data[ iRrow::2,  iRclmn::2] = R
+
+    #Massive amount of copypasta from libraw2dng in my pyimageconvert repo
+    #FIXME: Rework it all to reuse this boilerplate properly
+    preserved_keys = ['Exif.Photo.LensModel',
+                'Exif.Photo.LensModel',
+                'Exif.Photo.FocalLengthIn35mmFilm',
+                'Exif.Photo.FocalLength',
+                'Exif.Photo.FNumber',
+                'Exif.Photo.ExposureTime',
+                'Exif.Image.Make',
+                'Exif.Image.Model',
+                'Exif.Image.Orientation',
+                'Exif.Image.DateTime',
+                'Exif.Sony2.SonyModelID', #not sure if we want to keep this?
+                'Exif.Sony2.LensID', #needed for RT to get lens data
+                'Exif.Photo.ISOSpeedRatings']
+    
+    with pyexiv2.Image('blue.ARW') as exiv_file:
+        exif_data = exiv_file.read_exif()
+        preserved_data = {k: exif_data[k] for k in set(preserved_keys).intersection(exif_data.keys())}
+    
+    for i in range(blacklevel_array.shape[0]):
+        for j in range(blacklevel_array.shape[1]):
+            bayer_data[i::blacklevel_array.shape[0], j::blacklevel_array.shape[1]] -= blacklevel_array[i][j]
+
+    avg_blacklevel = np.mean(BlackLevel_perChannel)
+    wpoint = 65504 #Largest value representable in a float16
+    bayer_data *= wpoint/(WhiteLevel - avg_blacklevel)
+
+    if(np.amax(bayer_data) > 65504):
+        scalefac = 65504/np.amax(dng_data)
+        bayer_data *= scalefac
+        wpoint *= scalefac
+
+    #RT crashes badly if we preserve G1 as 3 instead of mapping it to 1.  TODO:  Check what DNG spec says about this.
+    bayer_pattern[bayer_pattern == 3] = 1
+
+    #FIXME:  Handle this better/more flexibly/more cleanly
+    #FIXME:  The camera color metadata is meaningless for an RGB capture like this, figure out an appropriate cmatrix.  Fixing that likely fixes the prior FIXME
+    cmatrix = CM_XYZ2camRGB[:-1,:]
+
+    unique_cam_model = preserved_data['Exif.Image.Make'] + " " + preserved_data['Exif.Image.Model']
+
+    dng_extratags = []
+    dng_extratags.append(('CFARepeatPatternDim', 'H', len(bayer_pattern.shape), bayer_pattern.shape, 0))
+    dng_extratags.append(('CFAPattern', 'B', bayer_pattern.size, bayer_pattern.flatten()))
+    dng_extratags.append(('ColorMatrix1', '2i', cmatrix.size, cm_to_flatrational(cmatrix)))
+    dng_extratags.append(('CalibrationIlluminant1', 'H', 1, 21)) #is there an enum for this in tifffile???
+    dng_extratags.append(('BlackLevelRepeatDim', 'H', 2, [1,1])) #BlackLevelRepeatDim
+    dng_extratags.append(('BlackLevel', 'H', 1, 0)) #We subtracted the black level already
+    dng_extratags.append(('WhiteLevel', 'H', 1, int(wpoint))) #WhiteLevel, scaled by us to the max for a float64
+    dng_extratags.append(('DNGVersion', 'B', 4, [1,4,0,0])) #DNGVersion
+    dng_extratags.append(('DNGBackwardVersion', 'B', 4, [1,4,0,0])) #DNGBackwardVersion
+    #Since we normalized our channels, our AsShotNeutral is close to 1
+    #FIXME: Derive AsShotNeutral from the maximum of each channel
+    dng_extratags.append(('AsShotNeutral', '2I', 3, np.array([1,1,1,1,1,1], dtype=np.uint32)))
+    dng_extratags.append(('UniqueCameraModel', 's', len(unique_cam_model), unique_cam_model))
+
+    with TIFF.TiffWriter(args['output']) as dng:
+        dng.write(bayer_data.astype(np.float16),
+                photometric='CFA',
+                compression='zlib',
+                predictor=34894, #FloatingpointX2 predictor
+                tile=(512,512), #RT does not like strips, save as tiles
+                extratags=dng_extratags,
+                subfiletype=0)
+
+    with pyexiv2.Image(args['output']) as dng:
+        dng.modify_exif(preserved_data)
