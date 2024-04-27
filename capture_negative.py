@@ -50,13 +50,7 @@ with NeewerLight() as light:
     print ("Configuring camera")
     # get configuration tree
     cfg = camera.get_config()
-    settings = cfg.get_child_by_name('settings')
-
-    for chld in settings.get_children():
-        print("foo!")
-        print(chld.get_name())
-
-    capturetarget_cfg = settings.get_child_by_name('capturetarget')
+    capturetarget_cfg = cfg.get_child_by_name('capturetarget')
     capturetarget_cfg.set_value('sdram')
     camera.set_config(cfg)
     shutterspeed_cfg = cfg.get_child_by_name('shutterspeed')
