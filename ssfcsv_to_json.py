@@ -54,6 +54,9 @@ plt.plot(spectral_data['Blue'], color='b')
 
 plt.show()
 
+#Convert to linear values
+spectral_data = spectral_data.apply(lambda x: np.power(10,x))
+
 # Generate dcamprof spectral JSON
 filebase = os.path.splitext(args['input'].name)[0]
 jsonname = filebase + ".json"
