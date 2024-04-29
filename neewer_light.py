@@ -2,6 +2,7 @@
 
 import simplepyble
 import struct
+from time import sleep
 
 class NeewerLight:
     def __init__(self, address = None):
@@ -17,22 +18,32 @@ class NeewerLight:
     def __enter__(self):
         return self
 
+    def scan_found_callback(self, device):
+        print(f"Found {device.identifier()} [{device.address()}]")
+        if self.address is not None:
+            if(self.address == device.address()):
+                print("Found device with requested address " + self.address)
+                self.adapter.scan_stop()
+                self.neewer_device = device
+        else:
+            if 52977 in device.manufacturer_data().keys():
+                print("Found Neewer device with address: " + device.address())
+                self.adapter.scan_stop()
+                self.neewer_device = device
+
     def find_device(self):
         adapters = simplepyble.Adapter.get_adapters()
         self.adapter = adapters[0]
 
         self.adapter.set_callback_on_scan_start(lambda: print("Scan started."))
         self.adapter.set_callback_on_scan_stop(lambda: print("Scan complete."))
-        self.adapter.set_callback_on_scan_found(lambda peripheral: print(f"Found {peripheral.identifier()} [{peripheral.address()}]"))
+        self.adapter.set_callback_on_scan_found(lambda device: self.scan_found_callback(device))
 
-        self.adapter.scan_for(5000)
+        self.adapter.scan_start()
+        #FIXME:  Implement a timeout here.
+        while(self.adapter.scan_is_active()):
+            sleep(0.1)
 
-        devices = self.adapter.scan_get_results()
-        for device in devices:
-            #TODO:  Determine if we should specifically look for NEEWER-RGB176 as the identifier in case other Neewer lights are not compatible
-            if 52977 in device.manufacturer_data().keys():
-                print("Found Neewer device with address: " + device.address())
-                self.neewer_device = device
 
     def get_characteristic(self):
         #FIXME:  Implement error handling for when the light is not found
