@@ -42,10 +42,12 @@ ap.add_argument('-s', '--shutter_speed', required=True,
                 help='Shutter Speed')
 ap.add_argument('-r', '--rgb', required=True, nargs=3, type=int,
                 help='RGB intensities for Neewer light, 0-100')
+ap.add_argument('-a', '--address', required=False, type=str,
+                help='BLE address of Neewer light')
 
 args = vars(ap.parse_args())
 
-with NeewerLight() as light:
+with NeewerLight(address=args['address']) as light:
     print("Initializing camera")
     camera = gp.Camera()
     camera.init()
