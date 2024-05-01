@@ -30,6 +30,8 @@ for color in ['Red', 'Green', 'Blue']:
     cdata.rename(columns={'Y' : color}, inplace=True)
     cdata.set_index('X', inplace=True, drop=True)
     cdata = cdata[cdata.index.notnull()]
+    # For now, handle Kodak Gold being nonmonotonic in blue by forcing it to be monotonic, since there's no sane way to invert such a curve
+    cdata[color] = np.flip(np.minimum.accumulate(np.flip(cdata[color])))
     datasets[color] = cdata
 
 density_data = pd.concat(datasets.values()).sort_index()
