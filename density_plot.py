@@ -82,7 +82,7 @@ filmdata =  {'Fuji Superia X-Tra 400':   {'inref' : np.power(2.0,-9.3014),
                                         'exp' : {'r' : 1.6,
                                                 'g' : 1.48,
                                                 'b' : 1.45},
-                                        'cstr': {'r' : 1.2,
+                                        'cstr': {'r' : 1.5,
                                                 'g' : 2.0,
                                                 'b' : 2.6}
                                         },
