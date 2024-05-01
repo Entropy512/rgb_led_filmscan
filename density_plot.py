@@ -58,7 +58,7 @@ density_data.rename(columns={'Red' : 'r', 'Green' : 'g', 'Blue' : 'b'}, inplace=
 
 def tcoeff_to_scenelin(tcoeff, reflevel, exp, linadj, strexp):
     scenelin = np.power(tcoeff, -exp)*reflevel
-    return np.power((np.power(scenelin,strexp)-linadj)/(1-linadj), 1.0/strexp)
+    return np.power((np.power(scenelin,strexp)-linadj), 1.0/strexp)
 
 """ 
 def equations(evadj, outref, strexp):
@@ -113,7 +113,7 @@ fig.suptitle('Scene Light vs. Film Transmission Coefficient for' + film)
 for color in ['r', 'g', 'b']:
     exp = filmdata[film]['exp'][color]
     cstr = filmdata[film]['cstr'][color]
-    linadj = (np.power(outref,cstr)-np.power(inref,cstr))/(np.power(outref,cstr)-1)
+    linadj = np.power(inref,cstr) - np.power(outref,cstr)
     pltn = axs[plotnum % 2, plotnum // 2]
     plotnum += 1
 
