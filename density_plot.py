@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
+from functools import partial
 
 ap = argparse.ArgumentParser()
 ap.add_argument('-i', '--input', type=argparse.FileType('rb'), required=True,
@@ -93,13 +94,29 @@ def fitfunc1(tcoeff, reflevel ,rexp, gexp, bexp):
 fit_df = scene_data.loc[(0.6 <= scene_data.index) & (scene_data.index <= 1.4)]
 
 fit_tcoeff = np.repeat(np.power(10,-fit_df.index),3).to_numpy()
-print(fit_tcoeff.reshape(-1,3))
 fit_data = np.concatenate((fit_df.r , fit_df.g , fit_df.b))
 
 p0 = [1.0, 1.5, 1.5, 1.5]
 (soln, cov) = curve_fit(fitfunc1, fit_tcoeff, fit_data, p0, bounds=((-np.inf,0, 0, 0), (np.inf,5.0,5.0,5.0)))
-print(soln)
-print(np.log2(soln[0]))
+scenemin = np.mean(scene_data.iloc[0])*np.log2(10)
+evdelt = np.log2(soln[0])-scenemin
+
+def fitfunc2(tcoeff, curvr, curvg, curvb, evdelt, reflevel ,rexp, gexp, bexp):
+    tcoeff = tcoeff.reshape(-1,3)
+    linadjr = np.power(reflevel,curvr) - np.power(reflevel*np.power(2,-evdelt),curvr)
+    linadjg = np.power(reflevel,curvg) - np.power(reflevel*np.power(2,-evdelt),curvg)
+    linadjb = np.power(reflevel,curvb) - np.power(reflevel*np.power(2,-evdelt),curvb)
+    return np.concatenate((np.log10(tcoeff_to_scenelin(tcoeff[:,0], reflevel, rexp, linadjr, curvr)).flatten(),
+                        np.log10(tcoeff_to_scenelin(tcoeff[:,1], reflevel, gexp, linadjg, curvg)).flatten(),
+                        np.log10(tcoeff_to_scenelin(tcoeff[:,2], reflevel, bexp, linadjb, curvb)).flatten()))
+
+fit_df = scene_data.loc[(0.0 <= scene_data.index) & (scene_data.index <= 1.4)]
+
+fit_tcoeff = np.repeat(np.power(10,-fit_df.index),3).to_numpy()
+fit_data = np.concatenate((fit_df.r , fit_df.g , fit_df.b))
+
+p0 = [1.0, 1.0, 1.0]
+(soln2, cov) = curve_fit(partial(fitfunc2, evdelt = evdelt, reflevel = soln[0], rexp = soln[1], gexp = soln[2], bexp = soln[3]), fit_tcoeff, fit_data, p0, bounds=((0, 0, 0), (5.0,5.0,5.0)))
 
 """ 
 def equations(evadj, outref, strexp):
@@ -137,13 +154,13 @@ filmdata =  {'Fuji Superia X-Tra 400':   {'inref' : np.power(2.0,-9.3014),
                                                 'b' : 3.0}
                                         },
            'Fit To Data':   {'inref' : soln[0],
-                                        'evdelt' : 4.0,
+                                        'evdelt' : evdelt,
                                         'exp' : {'r' : soln[1],
                                                 'g' : soln[2],
                                                 'b' : soln[3]},
-                                        'cstr': {'r' : 2.0,
-                                                'g' : 1.8,
-                                                'b' : 3.0}
+                                        'cstr': {'r' : soln2[0],
+                                                'g' : soln2[1],
+                                                'b' : soln2[2]}
                                         }
             }
 
