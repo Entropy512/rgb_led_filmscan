@@ -121,6 +121,10 @@ outref = inref*np.power(2.0,-evdelt)
 plotnum = 0
 pltn = None
 
+print("RawTherapee exponent settings:")
+print("Reference power: " + str(filmdata[film]['exp']['g']))
+print("Red ratio: " + str(filmdata[film]['exp']['r']/filmdata[film]['exp']['g']))
+print("Blue ratio:" + str(filmdata[film]['exp']['b']/filmdata[film]['exp']['g']))
 fig, axs = plt.subplots(2,2, sharex=True, sharey=True)
 axs[-1,-1].axis('off')
 fig.suptitle('Scene Light vs. Film Transmission Coefficient for ' + film)
