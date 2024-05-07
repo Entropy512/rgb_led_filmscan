@@ -14,6 +14,10 @@ from functools import partial
 ap = argparse.ArgumentParser()
 ap.add_argument('-i', '--input', type=argparse.FileType('rb'), required=True,
     help='path to input files')
+ap.add_argument('--dmax', type=float, default=1.5,
+    help='maximum density for exponent fitting')
+ap.add_argument('--dmin', type=float, default=0.5,
+    help='minimum density for exponent fitting')
 
 args = vars(ap.parse_args())
 
@@ -91,7 +95,7 @@ def fitfunc1(tcoeff, reflevel ,rexp, gexp, bexp):
                         np.log10(tcoeff_to_scenelin(tcoeff[:,2], reflevel, bexp, 0, 1)).flatten()))
 
 
-fit_df = scene_data.loc[(0.6 <= scene_data.index) & (scene_data.index <= 1.4)]
+fit_df = scene_data.loc[(args['dmin'] <= scene_data.index) & (scene_data.index <= args['dmax'])]
 
 fit_tcoeff = np.repeat(np.power(10,-fit_df.index),3).to_numpy()
 fit_data = np.concatenate((fit_df.r , fit_df.g , fit_df.b))
@@ -110,7 +114,7 @@ def fitfunc2(tcoeff, curvr, curvg, curvb, evdelt, reflevel ,rexp, gexp, bexp):
                         np.log10(tcoeff_to_scenelin(tcoeff[:,1], reflevel, gexp, linadjg, curvg)).flatten(),
                         np.log10(tcoeff_to_scenelin(tcoeff[:,2], reflevel, bexp, linadjb, curvb)).flatten()))
 
-fit_df = scene_data.loc[(0.0 <= scene_data.index) & (scene_data.index <= 1.4)]
+fit_df = scene_data.loc[(0.0 <= scene_data.index) & (scene_data.index <= args['dmax'])]
 
 fit_tcoeff = np.repeat(np.power(10,-fit_df.index),3).to_numpy()
 fit_data = np.concatenate((fit_df.r , fit_df.g , fit_df.b))
@@ -189,11 +193,15 @@ for color in ['r', 'g', 'b']:
     plotnum += 1
 
     pltn.xaxis.set_tick_params(labelbottom=True)
+    pltn.yaxis.set_tick_params(labelbottom=True)
     pltn.plot(scene_data.index, np.log2(np.power(10,scene_data[color])), color=color, alpha=0.5, label='Film Response')
-    pltn.plot(density_vals, np.log2(tcoeff_to_scenelin(tcoeff_vals, inref, exp, 0.0, 1.0)), color=color, dashes=[1,3], label='Simple Exponent (exp = -{})'.format(exp))
-    pltn.plot(density_vals, np.log2(tcoeff_to_scenelin(tcoeff_vals, inref, exp, linadj, cstr)), color=color, dashes=[2,1], label='Enhanced Model (exp = -{}, str={})'.format(exp,cstr))
+    pltn.plot(density_vals, np.log2(tcoeff_to_scenelin(tcoeff_vals, inref, exp, 0.0, 1.0)), color=color, dashes=[1,3], label='Simple Exponent (exp = -{:.2f})'.format(exp))
+    pltn.plot(density_vals, np.log2(tcoeff_to_scenelin(tcoeff_vals, inref, exp, linadj, cstr)), color=color, dashes=[2,1], label='Enhanced Model (exp = -{:.2f}, str={:.2f})'.format(exp,cstr))
+    pltn.axvline(x=args['dmin'], alpha=0.5)
+    pltn.axvline(x=args['dmax'], alpha=0.5)
     pltn.set_xlabel('Density difference from Dmin')
     pltn.set_ylabel('Scene Light (EV)')
+    pltn.grid()
     pltn.legend()
 
 
