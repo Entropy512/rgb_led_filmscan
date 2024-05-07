@@ -10,6 +10,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
 from functools import partial
+from matplotlib.widgets import MultiCursor
 
 ap = argparse.ArgumentParser()
 ap.add_argument('-i', '--input', type=argparse.FileType('rb'), required=True,
@@ -204,6 +205,8 @@ for color in ['r', 'g', 'b']:
     pltn.grid()
     pltn.legend()
 
+# https://stackoverflow.com/questions/63195460/how-to-have-a-fast-crosshair-mouse-cursor-for-subplots-in-matplotlib
+cursor = MultiCursor(fig.canvas, (axs[0,0], axs[0,1], axs[1,0]), color='r', lw=0.5, horizOn=True, vertOn=True)
 
 plt.show()
 
