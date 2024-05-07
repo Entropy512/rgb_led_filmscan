@@ -93,7 +93,7 @@ with NeewerLight(address=args['address']) as light:
     rawfile = rawpy.imread('red.ARW')
 
     bayer_pattern = rawfile.raw_pattern
-    bayer_data = rawfile.raw_image.astype('float64')
+    bayer_data = rawfile.raw_image.astype('uint16')
 
     iRrow,  iRclmn  = np.argwhere(bayer_pattern == 0)[0]
 
@@ -120,7 +120,7 @@ with NeewerLight(address=args['address']) as light:
     rawfile = rawpy.imread('green.ARW')
 
     bayer_pattern = rawfile.raw_pattern
-    bayer_data = rawfile.raw_image.astype('float64')
+    bayer_data = rawfile.raw_image.astype('uint16')
 
     iG0row, iG0clmn = np.argwhere(bayer_pattern == 1)[0]
     iG1row, iG1clmn = np.argwhere(bayer_pattern == 3)[0]
@@ -151,14 +151,14 @@ with NeewerLight(address=args['address']) as light:
     rawfile = rawpy.imread('blue.ARW')
 
     bayer_pattern = rawfile.raw_pattern.astype(np.uint8)
-    bayer_data = rawfile.raw_image.astype('float64')
+    bayer_data = rawfile.raw_image.astype('uint16')
 
     #This is the last image, pull all of the other metadata we need for our DNG
     WB_AsShot = rawfile.camera_whitebalance
     WhiteLevel = rawfile.white_level
     WhiteLevel_perChannel = np.array(rawfile.camera_white_level_per_channel, dtype=np.uint16)
     BlackLevel_perChannel = np.array(rawfile.black_level_per_channel, dtype=np.uint16)
-    blacklevel_array = np.array(BlackLevel_perChannel)[bayer_pattern]
+    blacklevel_array = np.array(BlackLevel_perChannel)[bayer_pattern].astype(np.uint16)
     CM_XYZ2camRGB = rawfile.rgb_xyz_matrix
 
     iBrow,  iBclmn  = np.argwhere(bayer_pattern == 2)[0]
@@ -193,20 +193,21 @@ with NeewerLight(address=args['address']) as light:
     with pyexiv2.Image('blue.ARW') as exiv_file:
         exif_data = exiv_file.read_exif()
         preserved_data = {k: exif_data[k] for k in set(preserved_keys).intersection(exif_data.keys())}
-    
-    for i in range(blacklevel_array.shape[0]):
-        for j in range(blacklevel_array.shape[1]):
-            bayer_data[i::blacklevel_array.shape[0], j::blacklevel_array.shape[1]] -= blacklevel_array[i][j]
 
-    avg_blacklevel = np.mean(BlackLevel_perChannel)
-    wpoint = 65504 #Largest value representable in a float16
-    bayer_data *= wpoint/(WhiteLevel - avg_blacklevel)
+    """     
+        for i in range(blacklevel_array.shape[0]):
+            for j in range(blacklevel_array.shape[1]):
+                bayer_data[i::blacklevel_array.shape[0], j::blacklevel_array.shape[1]] -= blacklevel_array[i][j]
 
-    if(np.amax(bayer_data) > 65504):
-        scalefac = 65504/np.amax(bayer_data)
-        bayer_data *= scalefac
-        wpoint *= scalefac
+        avg_blacklevel = np.mean(BlackLevel_perChannel)
+        wpoint = 65504 #Largest value representable in a float16
+        bayer_data *= wpoint/(WhiteLevel - avg_blacklevel)
 
+        if(np.amax(bayer_data) > 65504):
+            scalefac = 65504/np.amax(bayer_data)
+            bayer_data *= scalefac
+            wpoint *= scalefac
+    """
     #RT crashes badly if we preserve G1 as 3 instead of mapping it to 1.  TODO:  Check what DNG spec says about this.
     bayer_pattern[bayer_pattern == 3] = 1
 
@@ -221,9 +222,9 @@ with NeewerLight(address=args['address']) as light:
     dng_extratags.append(('CFAPattern', 'B', bayer_pattern.size, bayer_pattern.flatten()))
     dng_extratags.append(('ColorMatrix1', '2i', cmatrix.size, cm_to_flatrational(cmatrix)))
     dng_extratags.append(('CalibrationIlluminant1', 'H', 1, 21)) #is there an enum for this in tifffile???
-    dng_extratags.append(('BlackLevelRepeatDim', 'H', 2, [1,1])) #BlackLevelRepeatDim
-    dng_extratags.append(('BlackLevel', 'H', 1, 0)) #We subtracted the black level already
-    dng_extratags.append(('WhiteLevel', 'H', 1, int(wpoint))) #WhiteLevel, scaled by us to the max for a float64
+    dng_extratags.append(('BlackLevelRepeatDim', 'H', 2, blacklevel_array.shape)) #BlackLevelRepeatDim
+    dng_extratags.append(('BlackLevel', 'H', blacklevel_array.size, blacklevel_array.flatten().astype(np.uint16))) #We subtracted the black level already
+    dng_extratags.append(('WhiteLevel', 'H', 1, WhiteLevel)) #WhiteLevel, scaled by us to the max for a float64
     dng_extratags.append(('DNGVersion', 'B', 4, [1,4,0,0])) #DNGVersion
     dng_extratags.append(('DNGBackwardVersion', 'B', 4, [1,4,0,0])) #DNGBackwardVersion
     #Since we normalized our channels, our AsShotNeutral is close to 1
@@ -232,11 +233,9 @@ with NeewerLight(address=args['address']) as light:
     dng_extratags.append(('UniqueCameraModel', 's', len(unique_cam_model), unique_cam_model))
 
     with TIFF.TiffWriter(args['output']) as dng:
-        dng.write(bayer_data.astype(np.float16),
+        dng.write(bayer_data.astype(np.uint16),
                 photometric='CFA',
-                compression='zlib',
-                predictor=34894, #FloatingpointX2 predictor
-                tile=(512,512), #RT does not like strips, save as tiles
+                compression=None,
                 extratags=dng_extratags,
                 subfiletype=0)
 
