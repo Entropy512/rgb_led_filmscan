@@ -67,7 +67,7 @@ exposure_vals = np.arange(-3.62,1.0 + istep, istep)
 density_data = density_data.reindex(density_data.index.union(exposure_vals))
 
 dstep = 0.01
-density_vals = np.arange(0, 2.5 + dstep, dstep)
+density_vals = np.linspace(0, density_data.max().max(), 1000)
 scene_data = scene_data.reindex(scene_data.index.union(density_vals))
 
 #TODO:  Determine if we need to bother with extrapolation and interpolation since we're just curve-fitting.  May cause more problems than it solves in this application.  The dangers of copypasta!
@@ -172,7 +172,6 @@ filmdata =  {'Fuji Superia X-Tra 400':   {'inref' : np.power(2.0,-9.3014),
                                         }
             }
 
-density_vals = np.linspace(0,2.5,2000)
 tcoeff_vals = np.power(10,-(density_vals))
 
 film = args['name']
