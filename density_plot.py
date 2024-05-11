@@ -19,6 +19,8 @@ ap.add_argument('--dmax', type=float, default=1.5,
     help='maximum density for exponent fitting')
 ap.add_argument('--dmin', type=float, default=0.5,
     help='minimum density for exponent fitting')
+ap.add_argument('-n', '--name', default='Model Fit to Data',
+    help='Name of the film for the graph')
 
 args = vars(ap.parse_args())
 
@@ -36,6 +38,7 @@ for color in ['Red', 'Green', 'Blue']:
     cdata.rename(columns={'Y' : color}, inplace=True)
     cdata.set_index('X', inplace=True, drop=True)
     cdata = cdata[cdata.index.notnull()]
+    cdata.sort_index(inplace=True)
     # For now, handle Kodak Gold being nonmonotonic in blue by forcing it to be monotonic, since there's no sane way to invert such a curve
     cdata[color] = np.flip(np.minimum.accumulate(np.flip(cdata[color])))
     datasets[color] = cdata
@@ -158,7 +161,7 @@ filmdata =  {'Fuji Superia X-Tra 400':   {'inref' : np.power(2.0,-9.3014),
                                                 'g' : 1.8,
                                                 'b' : 3.0}
                                         },
-           'Fit To Data':   {'inref' : soln[0],
+            args['name']:   {'inref' : soln[0],
                                         'evdelt' : evdelt,
                                         'exp' : {'r' : soln[1],
                                                 'g' : soln[2],
@@ -172,7 +175,7 @@ filmdata =  {'Fuji Superia X-Tra 400':   {'inref' : np.power(2.0,-9.3014),
 density_vals = np.linspace(0,2.5,2000)
 tcoeff_vals = np.power(10,-(density_vals))
 
-film = 'Fit To Data'
+film = args['name']
 inref = filmdata[film]['inref']
 evdelt = filmdata[film]['evdelt']
 outref = inref*np.power(2.0,-evdelt)
